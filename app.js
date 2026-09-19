@@ -166,7 +166,7 @@ function TASKS() {
   add('t_rec', 'docs', 'Попросить учителей о рекомендациях и привязать советника', 'Просить нужно минимум за 6 недель до дедлайна.', 60, { go: 'docs' });
   add('t_trans', 'docs', 'Заказать у школы транскрипт и School Profile', 'Уточни, нужен ли перевод и сколько времени займёт выдача.', 50, { go: 'docs' });
   add('t_acts', 'docs', 'Заполнить Activities List (5+) и Honors (1+)', 'Пиши роль, результат и цифры.', 40, { auto: acts >= 5 && hon >= 1, go: 'docs' });
-  add('t_passport', 'docs', 'Проверить срок паспорта и сделать сканы документов', 'Паспорт понадобится для подачи, визы и Candidate Week.', 90, {});
+  add('t_passport', 'docs', 'Проверить срок паспорта и сделать сканы документов', 'Паспорт понадобится дл�� подачи, визы и Candidate Week.', 90, {});
   if (p.waiver) add('t_waiver', 'money', 'Запросить Fee Waiver на взнос за подачу', 'Через школьного советника или платформу. Сохрани подтверждение.', 45, { go: 'docs' });
   if (p.aid > 0) add('t_fin', 'money', 'Заполнить CSS Profile / ISFAA, если этого требуют вузы', 'Помощь по нужде часто требует финансовую анкету и документы семьи.', 35, { go: 'docs' });
   if (p.aid > 0) add('t_cof', 'money', 'Подготовить Certification of Finances', 'Подтверждение средств нужно для иностранных студентов.', 30, { go: 'docs' });
@@ -595,8 +595,28 @@ function toast(msg) {
   const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2400);
 }
 
-/* ---------- события ---------- */
-function refreshPrev() { const el = $('#prev'); if (el) el.innerHTML = prevHTML(); }
+  /* ---------- AI admissions assistant ---------- */
+  const CHAT_SUGGESTIONS = ['Какие вузы дают Full Ride?', 'Как заполнить CSS Profile?', 'Где получить Fee Waiver?'];
+  const CHAT_SYSTEM = 'Ты — Meetup, эксперт по поступлению и финансовой помощи для школьников из Казахстана и Центральной Азии. Отвечай по-русски, понятно и практично. Знай: NYU Abu Dhabi заявляет need-blind помощь для всех студентов с покрытием обучения, жилья, перелётов и стипендией; Nazarbayev University — государственные гранты с обучением и стипендией; KAIST и UNIST — tuition waiver и ежемесячная стипендия; Bilkent и Koç — merit/need scholarships; HKU, HKUST и PolyU — merit scholarships с обучением и living allowance; Harvard, MIT, Princeton, Yale, Amherst, Dartmouth и Bowdoin покрывают 100% demonstrated financial need по своим правилам. Объясняй CSS Profile, ISFAA, Certification of Finances и Fee Waiver. Всегда напоминай проверять актуальные условия на официальном сайте: суммы и правила меняются.';
+  let chatMessages = [{ role: 'assistant', text: 'Привет! Я помогу разобраться с вузами, Full Ride и финансовой помощью. С чего начнём?' }];
+  let chatBusy = false;
+  function chatMarkdown(text) {
+    return esc(text).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/`([^`]+)`/g, '<code>$1</code>').replace(/^[-•] (.+)$/gm, '<li>$1</li>').replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>').replace(/\n/g, '<br>');
+  }
+  function chatHTML() {
+    if (!document.getElementById('meetup-chat')) {
+      document.body.insertAdjacentHTML('beforeend', `<section id="meetup-chat" class="chat-widget" aria-label="AI-помощник Meetup"><button class="chat-fab" data-chat="toggle" aria-label="Открыть AI-помощника"><span class="chat-fab-dot"></span><span class="chat-fab-icon">AI</span></button><div class="chat-panel" hidden><header class="chat-head"><div><strong>Meetup AI</strong><span>Приёмная и финансовая помощь</span></div><button class="chat-close" data-chat="toggle" aria-label="Закрыть чат">×</button></header><div class="chat-body"><div class="chat-messages" aria-live="polite"></div><div class="chat-suggestions">${CHAT_SUGGESTIONS.map(x => `<button data-chat="suggest" data-prompt="${esc(x)}">${esc(x)}</button>`).join('')}</div></div><form class="chat-form"><input class="chat-input" name="prompt" maxlength="800" autocomplete="off" placeholder="Спроси о поступлении..." aria-label="Сообщение помощнику"><button class="chat-send" type="submit" aria-label="Отправить">↑</button></form></div></section>`);
+      document.querySelector('#meetup-chat .chat-form').addEventListener('submit', e => { e.preventDefault(); const input = e.currentTarget.prompt; sendChat(input.value); });
+      document.querySelectorAll('[data-chat]').forEach(el => el.addEventListener('click', () => { const action = el.dataset.chat; if (action === 'toggle') { const panel = document.querySelector('.chat-panel'); panel.hidden = !panel.hidden; if (!panel.hidden) renderChat(); } if (action === 'suggest') sendChat(el.dataset.prompt); }));
+      renderChat();
+    }
+  }
+  function renderChat() { const box = document.querySelector('.chat-messages'); if (!box) return; box.innerHTML = chatMessages.map(m => `<div class="chat-message ${m.role}"><div class="chat-avatar">${m.role === 'assistant' ? 'AI' : 'Вы'}</div><div class="chat-bubble">${chatMarkdown(m.text)}</div></div>`).join('') + (chatBusy ? '<div class="chat-message assistant"><div class="chat-avatar">AI</div><div class="chat-bubble typing"><i></i><i></i><i></i></div></div>' : ''); box.scrollTop = box.scrollHeight; }
+  async function sendChat(raw) { const prompt = String(raw || '').trim(); if (!prompt || chatBusy) return; chatMessages.push({ role: 'user', text: prompt }); chatBusy = true; const input = document.querySelector('.chat-input'); if (input) input.value = ''; renderChat(); try { const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, system: CHAT_SYSTEM }) }); if (!res.ok) throw new Error('chat unavailable'); const data = await res.json(); chatMessages.push({ role: 'assistant', text: data.text || data.message || 'Не удалось получить ответ.' }); } catch (e) { chatMessages.push({ role: 'assistant', text: 'Сейчас я работаю в демо-режиме. Попробуй спросить про Full Ride, CSS Profile или Fee Waiver — я дам ориентир и подскажу, что проверить на официальном сайте.' }); } finally { chatBusy = false; renderChat(); } }
+  chatHTML();
+
+  /* ---------- события ---------- */
+  function refreshPrev() { const el = $('#prev'); if (el) el.innerHTML = prevHTML(); }
 function refreshMoney() { const el = $('#money-out'); if (el) el.innerHTML = moneyOut(); }
 function essayCount() { const el = $('#wc'); if (el) el.textContent = wc(S.essay) + ' из 650 слов'; }
 
